@@ -252,7 +252,7 @@ def calculate_dynamic_leverage(df, current_price):
 
 def calculate_level_with_decay(df, current_idx):
     """Calculate level with decay mechanism"""
-    historical = df.iloc[:current_idx + 1]
+    historical = df.iloc[:current_idx + 1].copy()
     historical['hour_utc'] = historical['open_time'].dt.hour
     session_closes = historical[historical['hour_utc'] == SESSION_CLOSE_HOUR_UTC]
     
