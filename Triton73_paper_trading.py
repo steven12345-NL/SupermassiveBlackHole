@@ -27,7 +27,7 @@ from Triton73 import (
     calculate_dynamic_leverage, calculate_level_with_decay,
     check_trend_filter, check_volume_confirmation, check_breakout_enhanced,
     calculate_position_size, load_strategy_state, save_strategy_state,
-    check_drawdown_pause, log_trade, send_telegram
+    check_drawdown_pause, log_trade, send_telegram, fetch_funding_rate
 )
 
 # Paper Trading Files
@@ -134,6 +134,17 @@ def check_open_positions(paper_state, current_price):
                 should_close = True
         
         if should_close:
+            # TRITON73: SLIPPAGE MODELING
+            # Apply slippage to exit price (0.25% average slippage)
+            slippage_pct = 0.0025  # 0.25% average slippage on MEXC
+            if side == 'LONG':
+                exit_price_with_slippage = exit_price * (1 - slippage_pct)  # Slippage reduces exit price for longs
+            else:  # SHORT
+                exit_price_with_slippage = exit_price * (1 + slippage_pct)  # Slippage increases exit price for shorts
+            
+            # Use slippage-adjusted exit price for P&L calculation
+            exit_price = exit_price_with_slippage
+            
             # Calculate P&L
             if side == 'LONG':
                 pnl_amount = position_units * (exit_price - entry) * leverage
@@ -247,11 +258,22 @@ def open_paper_position(signal, position, leverage, paper_state):
         print("⚠️  Could not get current price, skipping position")
         return paper_state
     
+    # TRITON73: SLIPPAGE MODELING
+    # Apply slippage to entry price (0.25% average slippage on MEXC)
+    slippage_pct = 0.0025  # 0.25% average slippage
+    if signal['side'] == 'LONG':
+        entry_with_slippage = signal['entry'] * (1 + slippage_pct)  # Slippage increases entry price for longs
+    else:  # SHORT
+        entry_with_slippage = signal['entry'] * (1 - slippage_pct)  # Slippage decreases entry price for shorts
+    
+    # Use slippage-adjusted entry price
+    adjusted_entry = entry_with_slippage
+    
     # Create position record
     paper_position = {
         'entry_time': datetime.now().isoformat(),
         'side': signal['side'],
-        'entry': signal['entry'],
+        'entry': adjusted_entry,  # Use slippage-adjusted entry
         'stop_loss': signal['stop_loss'],
         'take_profit': signal['take_profit'],
         'position_units': position['position_units'],
@@ -366,6 +388,11 @@ def main():
             print_paper_stats(paper_state)
             return
         
+        # Fetch funding rate for position size adjustment
+        funding_rate = fetch_funding_rate(SYMBOL)
+        if funding_rate != 0:
+            print(f"  Funding Rate: {funding_rate*100:.3f}% per 8h")
+        
         # Calculate position size
         position = calculate_position_size(
             paper_state['capital'],
@@ -373,7 +400,8 @@ def main():
             signal['stop_loss'],
             signal['side'],
             leverage,
-            current_price=signal['current_price']
+            current_price=signal['current_price'],
+            funding_rate=funding_rate  # Pass funding rate for adjustment
         )
         
         if position:

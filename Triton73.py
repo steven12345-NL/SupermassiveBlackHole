@@ -154,6 +154,30 @@ def log_trade(trade_data):
         print(f"Error logging trade: {e}")
 
 
+def fetch_funding_rate(symbol='BTCUSDT'):
+    """Fetch current funding rate from MEXC"""
+    try:
+        url = f"{MEXC_API_BASE}/funding-rate"
+        params = {'symbol': symbol}
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        
+        if isinstance(data, list) and len(data) > 0:
+            # Get most recent funding rate
+            latest = data[0]
+            funding_rate = float(latest.get('fundingRate', 0))
+            return funding_rate
+        elif isinstance(data, dict):
+            funding_rate = float(data.get('fundingRate', 0))
+            return funding_rate
+        
+        return 0.0
+    except Exception as e:
+        print(f"⚠️  Could not fetch funding rate: {e}")
+        return 0.0  # Default to 0 if fetch fails
+
+
 def fetch_mexc_klines(symbol, interval, limit=500):
     """Fetch klines from MEXC"""
     try:
@@ -503,8 +527,8 @@ def check_breakout_enhanced(df, level, trend_filter, use_second_confirmation=Tru
     return None
 
 
-def calculate_position_size(current_capital, entry_price, stop_loss_price, side, leverage, current_price=None):
-    """Calculate position size based on risk with liquidation protection"""
+def calculate_position_size(current_capital, entry_price, stop_loss_price, side, leverage, current_price=None, funding_rate=None):
+    """Calculate position size based on risk with liquidation protection and funding rate adjustment"""
     risk_amount = current_capital * RISK_PER_TRADE_PCT
     
     if side == 'LONG':
@@ -524,6 +548,31 @@ def calculate_position_size(current_capital, entry_price, stop_loss_price, side,
         position_value = position_units * entry_price
         margin_required = position_value / leverage
         risk_amount = (position_units * price_risk) / leverage
+    
+    # TRITON73: FUNDING RATE ADJUSTMENT
+    # Adjust position size based on funding rate to offset costs
+    if funding_rate is not None:
+        if funding_rate > 0.001:  # >0.1% per 8h (costly for longs)
+            if side == 'LONG':
+                print(f"⚠️  High funding rate ({funding_rate*100:.3f}%): Reducing LONG position by 5%")
+                position_units *= 0.95
+                position_value = position_units * entry_price
+                margin_required = position_value / leverage
+                risk_amount = (position_units * price_risk) / leverage
+        elif funding_rate < -0.001:  # < -0.1% per 8h (beneficial for longs)
+            if side == 'LONG':
+                print(f"✅ Negative funding rate ({funding_rate*100:.3f}%): Increasing LONG position by 2%")
+                position_units *= 1.02
+                position_value = position_units * entry_price
+                margin_required = position_value / leverage
+                risk_amount = (position_units * price_risk) / leverage
+        elif funding_rate < 0.001 and side == 'SHORT':  # Positive funding helps shorts
+            if funding_rate > 0:
+                print(f"✅ Positive funding rate ({funding_rate*100:.3f}%): Increasing SHORT position by 2%")
+                position_units *= 1.02
+                position_value = position_units * entry_price
+                margin_required = position_value / leverage
+                risk_amount = (position_units * price_risk) / leverage
     
     # TRITON73: LIQUIDATION PROTECTION
     # If price is within 2% of liquidation, reduce position size by 50%
@@ -662,13 +711,19 @@ def main():
     signal = check_breakout_enhanced(df, level, trend_filter, USE_SECOND_CONFIRMATION)
     
     if signal:
+        # Fetch funding rate for position size adjustment
+        funding_rate = fetch_funding_rate(SYMBOL)
+        if funding_rate != 0:
+            print(f"  Funding Rate: {funding_rate*100:.3f}% per 8h")
+        
         position = calculate_position_size(
             state['current_capital'],
             signal['entry'],
             signal['stop_loss'],
             signal['side'],
             leverage,
-            current_price=signal['current_price']  # Pass current price for liquidation check
+            current_price=signal['current_price'],  # Pass current price for liquidation check
+            funding_rate=funding_rate  # Pass funding rate for adjustment
         )
         
         if position:

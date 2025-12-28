@@ -7,6 +7,8 @@ Runs the Triton73 script at each 4h candle close (00:00, 04:00, 08:00, 12:00, 16
 import subprocess
 import time
 import sys
+import shutil
+import os
 from datetime import datetime, timedelta
 import pytz
 
@@ -38,8 +40,31 @@ def get_next_check_time():
     return tomorrow.replace(hour=0, minute=5, second=0, microsecond=0)
 
 
+def backup_strategy_state():
+    """Backup strategy_state.json before updates"""
+    state_file = 'strategy_state.json'
+    if os.path.exists(state_file):
+        try:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            backup_file = f'strategy_state_backup_{timestamp}.json'
+            shutil.copy(state_file, backup_file)
+            # Keep only last 10 backups
+            backups = sorted([f for f in os.listdir('.') if f.startswith('strategy_state_backup_')])
+            if len(backups) > 10:
+                for old_backup in backups[:-10]:
+                    try:
+                        os.remove(old_backup)
+                    except:
+                        pass
+        except Exception as e:
+            print(f"⚠️  Could not backup strategy state: {e}")
+
+
 def run_signal_script():
     """Run the Triton73 trading signals script"""
+    # Backup strategy state before running
+    backup_strategy_state()
+    
     try:
         result = subprocess.run(
             [sys.executable, SIGNAL_SCRIPT],
