@@ -13,6 +13,7 @@
 - [Quick Start](#quick-start)
 - [Running the Strategy](#running-the-strategy)
 - [Monitoring & Performance](#monitoring--performance)
+- [VPS Deployment](#vps-deployment)
 - [File Structure](#file-structure)
 - [Configuration](#configuration)
 - [Troubleshooting](#troubleshooting)
@@ -330,6 +331,54 @@ python3 backtest_triton73.py
 3. **Max Drawdown**: Target <8%
 4. **Average R:R**: Should be ~3.5:1
 5. **Total Return**: Track over time
+
+---
+
+## 🖥️ VPS Deployment
+
+For running Triton73 24/7, you'll need a VPS (Virtual Private Server). See **`VPS_RECOMMENDATIONS.md`** for detailed recommendations.
+
+### Quick Recommendations:
+
+**Free Option:**
+- **Oracle Cloud Free Tier** - $0/month forever
+  - 2 VMs, 1GB RAM each, 200GB storage
+  - Perfect for testing and long-term free hosting
+
+**Best Value (Paid):**
+- **Hetzner Cloud** - €3.29/month (~$3.50)
+  - 1 vCPU, 2GB RAM, 20GB SSD
+  - Best price/performance ratio
+
+**Easiest (Paid):**
+- **DigitalOcean** - $4/month
+  - 1 vCPU, 512MB RAM, 10GB SSD
+  - Best documentation and community
+
+### Quick Setup on VPS:
+
+```bash
+# 1. Install dependencies
+sudo apt update && sudo apt install python3 python3-pip git -y
+pip3 install requests pandas numpy pytz
+
+# 2. Clone repository
+git clone https://github.com/steven12345-NL/SupermassiveBlackHole.git
+cd SupermassiveBlackHole/final_trading_strategy
+
+# 3. Set environment variables
+export TELEGRAM_BOT_TOKEN='your_token'
+export TELEGRAM_CHAT_ID='your_chat_id'
+
+# 4. Run with screen (keeps running after disconnect)
+screen -S triton73
+python3 run_paper_trading_continuous.py
+# Press Ctrl+A then D to detach
+```
+
+**For detailed VPS setup:**
+- **Hetzner Cloud**: See `HETZNER_SETUP_GUIDE.md` (complete step-by-step guide)
+- **Other providers**: See `VPS_RECOMMENDATIONS.md`
 
 ---
 
